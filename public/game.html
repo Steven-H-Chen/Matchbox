@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en" x-data="{}">
+<head>
+  <meta charset="utf-8" />
+  <title>Matchbox</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+</head>
+<body class="min-h-screen bg-slate-50" x-cloak>
+
+  <!-- Header + back to menu -->
+  <header class="bg-slate-900 text-white flex items-center justify-between px-4 py-3">
+    <h1 class="text-2xl">Matchbox 🌟</h1>
+    <button id="back-btn" class="text-sm text-emerald-300 hover:underline" @click="window.location.href='/index.html'">
+      ← Menu
+    </button>
+  </header>
+
+  <!-- Scoreboard -->
+  <aside class="fixed top-20 right-4 bg-white shadow-lg rounded-lg p-4 w-48 text-sm space-y-1">
+    <div class="font-semibold text-center">Scoreboard</div>
+    <div id="score-x">X wins: 0</div>
+    <div id="score-o">O wins: 0</div>
+    <div id="score-d">Draws: 0</div>
+    <hr>
+    <div id="moves-round">Moves this round: 0</div>
+    <div id="moves-all">Total moves: 0</div>
+  </aside>
+
+  <!-- Guess Modal -->
+  <div
+    x-data="{ open: false }"
+    x-show="open"
+    @open-guess.window="open = true"
+    @close-guess.window="open = false"
+    class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50"
+    style="display: none;"
+  >
+    <div class="bg-white p-6 rounded-lg">
+      <p class="mb-2">Guess a number 1–100 to decide X/O:</p>
+      <div class="flex items-center space-x-2">
+        <input id="guess-in" type="number" min="1" max="100" class="border p-2 rounded" />
+        <button id="guess-btn" class="bg-blue-500 text-white px-3 py-1 rounded">Submit</button>
+      </div>
+      <p id="guess-msg" class="text-red-500 mt-2"></p>
+    </div>
+  </div>
+
+  <!-- Main game container -->
+  <main id="game" class="flex flex-col items-center justify-center h-full gap-6 py-10"></main>
+
+  <script>
+    // Alpine dispatch helpers
+    function openGuessModal() {
+      window.dispatchEvent(new CustomEvent('open-guess'));
+    }
+    function closeGuessModal() {
+      window.dispatchEvent(new CustomEvent('close-guess'));
+    }
+
+    // session-wide tally & state
+    const tally = { x:0, o:0, d:0, totalMoves:0 };
+    let state = {}, yourSide;
+
+    // parse URL params
+    const params = new URLSearchParams(location.search);
+    const mode     = params.get('mode');      // classic | erase | experimental
+    const modeType = params.get('modeType');  // solo | pvp
+
+    // API helpers (JSON-body)
+    const apiNew     = ()=> fetch('/api/new', {
+                          method:'POST',
+                          headers:{'Content-Type':'application/json'},
+                          body: JSON.stringify({ mode })
+                        }).then(r=>r.json());
+    const apiMove    = i=> fetch('/api/move', {
+                          method:'POST',
+                          headers:{'Content-Type':'application/json'},
+                          body: JSON.stringify({ game_id: state.game_id, square: i })
+                        }).then(r=>r.json());
+    const apiQueue   = ()=> fetch('/api/queue', {
+                          method:'POST',
+                          headers:{'Content-Type':'application/json'},
+                          body: JSON.stringify({ mode })
+                        }).then(r=>r.json());
+    const apiState   = ()=> fetch(`/api/state?lobby_id=${state.lobby_id}`)
+                          .then(r=>r.json());
+    const apiPvPMove = i=> fetch('/api/pvp/move', {
+                          method:'POST',
+                          headers:{'Content-Type':'application/json'},
+                          body: JSON.stringify({ lobby_id: state.lobby_id, square: i })
+                        }).then(r=>r.json());
+    const apiRematch = ()=> fetch('/api/rematch', {
+                          method:'POST',
+                          headers:{'Content-Type':'application/json'},
+                          body: JSON.stringify({ lobby_id: state.lobby_id })
+                        }).then(()=>pollState());
+    const apiLeave   = ()=> fetch('/api/leave', {
+                          method:'POST',
+                          headers:{'Content-Type':'application/json'},
+                          body: JSON.stringify({ lobby_id: state.lobby_id })
+                        });
+
+    // on load
+    window.addEventListener('DOMContentLoaded', () => {
+      if (modeType === 'solo') {
+        initSolo();
+      } else {
+        state = { waiting:true, timeout:15, status:'waiting' };
+        render();
+      }
+      document.getElementById('guess-btn').onclick = submitGuess;
+    });
+
+    // submit guess
+    async function submitGuess() {
+      const g = +document.getElementById('guess-in').value;
+      const pid = sessionStorage.getItem('playerId');
+      const res = await fetch('/api/guess', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ lobby_id: state.lobby_id, player_id: pid, guess: g })
+      });
+      const js = await res.json();
+      if(js.need) return;
+      if(js.tie) {
+        document.getElementById('guess-msg').textContent = 'Tie—guess again';
+        return;
+      }
+      yourSide = js.your_side;
+      closeGuessModal();
+      render();
+    }
+
+    // main render
+    async function render() {
+      const game = document.getElementById('game');
+      game.innerHTML = '';
+      if (modeType==='solo') {
+        const { game_id, board, status } = await apiNew();
+        state = { game_id, board, status };
+      }
+      if (modeType==='pvp' && state.waiting) {
+        const btn = document.createElement('button');
+        btn.id='queue-btn'; btn.className='bg-purple-500 text-white px-4 py-2 rounded';
+        btn.textContent=`Join Quick Queue (${state.timeout}s)`;
+        btn.onclick=async()=>{const q=await apiQueue(); state={...state,...q}; render(); if(!state.waiting) openGuessModal(); else startCountdown();};
+        game.append(btn); return;
+      }
+      if (modeType==='pvp' && state.status==='in_progress') { pollState(); return; }
+      drawBoard();
+    }
+
+    // initialize solo
+    function initSolo() {
+      apiNew().then(res=>{ state=res; drawBoard(); });
+    }
+
+    // draw grid + controls
+    function drawBoard() {
+      const game = document.getElementById('game'); game.innerHTML='';
+      const size = (mode==='experimental'?5:3);
+      const grid = document.createElement('div'); grid.className=`grid grid-cols-${size} gap-2 bg-slate-400 p-2`;
+      state.board.forEach((c,i)=>{
+        const btn=document.createElement('button');
+        const filled=c!==' ';
+        btn.innerHTML=filled?c.toUpperCase():'&nbsp;';
+        btn.disabled=filled||(modeType==='pvp'&&state.status!=='in_progress');
+        btn.className=`w-20 h-20 text-3xl font-bold ${filled?'bg-gray-300 cursor-default':'bg-slate-200 hover:bg-slate-100'}`;
+        btn.onclick=async()=>{
+          state=(modeType==='solo'?await apiMove(i):await apiPvPMove(i));
+          updateScoreboard();
+          if(state.status==='in_progress') drawBoard(); else if(modeType==='pvp') drawEndButtons();
+        };
+        if(mode==='erase'&&state.erase&&state.erase.history[0]===i) btn.classList.add('border-4','border-red-400');
+        grid.append(btn);
+      });
+      game.append(grid);
+      if(modeType==='solo'){
+        const ng=document.createElement('button'); ng.textContent='New Game';
+        ng.className='mt-4 bg-green-500 text-white px-4 py-2 rounded'; ng.onclick=initSolo;
+        game.append(ng);
+      }
+      updateScoreboard();
+      if(modeType==='pvp'&&state.status!=='in_progress') drawEndButtons();
+    }
+
+    // polling for PvP
+    let pollHandle;
+    function pollState() {
+      clearTimeout(pollHandle);
+      apiState().then(s=>{state=s; drawBoard(); if(s.status==='in_progress') pollHandle=setTimeout(pollState,1000);} );
+    }
+
+    // end-of-game buttons
+    function drawEndButtons() {
+      const game=document.getElementById('game');
+      const wrap=document.createElement('div'); wrap.className='mt-4 space-x-4';
+      const r=document.createElement('button'); r.textContent='Request Rematch';
+      r.className='bg-emerald-600 text-white px-4 py-2 rounded'; r.onclick=apiRematch;
+      const l=document.createElement('button'); l.textContent='Leave & Re-queue';
+      l.className='bg-gray-600 text-white px-4 py-2 rounded'; l.onclick=()=>{apiLeave(); state={waiting:true,timeout:15,status:'waiting'}; render();};
+      wrap.append(r,l); game.append(wrap);
+    }
+
+    // countdown timer
+    function startCountdown() {
+      if(state.timeout<=0){alert('No match found.'); state={waiting:true,timeout:15}; render(); return;}
+      state.timeout--; document.getElementById('queue-btn').textContent=`Join Quick Queue (${state.timeout}s)`;
+      setTimeout(startCountdown,1000);
+    }
+
+    // scoreboard update
+    function updateScoreboard() {
+      const moves=state.board.filter(c=>c!==' ').length;
+      if(state.status==='x_wins') tally.x++;
+      if(state.status==='o_wins') tally.o++;
+      if(state.status==='draw') tally.d++;
+      if(state.status!=='in_progress') tally.totalMoves+=moves;
+      document.getElementById('score-x').textContent=`X wins: ${tally.x}`;
+      document.getElementById('score-o').textContent=`O wins: ${tally.o}`;
+      document.getElementById('score-d').textContent=`Draws: ${tally.d}`;
+      document.getElementById('moves-round').textContent=`Moves this round: ${moves}`;
+      document.getElementById('moves-all').textContent=`Total moves: ${tally.totalMoves}`;
+    }
+  </script>
+</body>
+</html>

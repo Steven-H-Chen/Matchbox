@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Matchbox</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+  <!-- Firebase + Realtime DB (for PvP queue) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signOut,
+      signInWithEmailAndPassword,
+      createUserWithEmailAndPassword
+    } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
+    import {
+      getDatabase,
+      ref as dbRef,
+      set as dbSet
+    } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBBu-9X8PJSzczS967rLcIYyYFjIRd91Bs",
+      authDomain: "matchbox-572e5.firebaseapp.com",
+      databaseURL: "https://matchbox-572e5-default-rtdb.firebaseio.com",
+      projectId: "matchbox-572e5",
+      storageBucket: "matchbox-572e5.appspot.com",
+      messagingSenderId: "782406115903",
+      appId: "1:782406115903:web:5eef421a8ce98b05e94e8a"
+    };
+    const app      = initializeApp(firebaseConfig);
+    const auth     = getAuth(app);
+    const provider = new GoogleAuthProvider();
+    const db       = getDatabase(app);
+
+    window.fbAuth                         = auth;
+    window.fbProvider                     = provider;
+    window.signInWithPopup                = signInWithPopup;
+    window.signOut                        = signOut;
+    window.signInWithEmailAndPassword     = signInWithEmailAndPassword;
+    window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+    window.fbDB                           = db;
+    window.fbRef                          = dbRef;
+    window.fbSet                          = dbSet;
+  </script>
+
+  <style>
+    /* simple modal styles */
+    #auth-modal { display:none; position:fixed; inset:0; align-items:center; justify-content:center; background:rgba(0,0,0,0.5); }
+    #auth-modal.active { display:flex; }
+  </style>
+</head>
+
+<body class="min-h-screen bg-slate-50 flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-slate-900 text-white flex items-center justify-between px-4 py-3">
+    <h1 class="text-2xl font-semibold">Matchbox 🌟</h1>
+    <div id="auth-bar" class="space-x-2"></div>
+  </header>
+
+  <!-- Landing page: choose mode -->
+  <section id="landing" class="flex-grow flex flex-col items-center justify-center space-y-6 px-4">
+    <p class="text-lg">Choose your game mode:</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+      <!-- Classic -->
+      <div class="bg-white p-4 rounded-lg shadow">
+        <h2 class="text-xl font-semibold">Classic</h2>
+        <p class="mt-2 text-sm">Standard 3×3 vs AI or friend</p>
+        <div class="mt-4 space-x-2">
+          <button id="classic-solo" class="bg-blue-500 hover:bg-blue-600 px-3 py-1 rounded text-white" disabled>Solo</button>
+          <button id="classic-queue" class="bg-purple-500 hover:bg-purple-600 px-3 py-1 rounded text-white" disabled>Quick Queue</button>
+        </div>
+      </div>
+
+      <!-- Erase-Mode -->
+      <div class="bg-white p-4 rounded-lg shadow">
+        <h2 class="text-xl font-semibold">Erase-Mode</h2>
+        <p class="mt-2 text-sm">Oldest mark is erased after N moves</p>
+        <div class="mt-4 space-x-2">
+          <button id="erase-solo" class="bg-blue-500 hover:bg-blue-600 px-3 py-1 rounded text-white" disabled>Solo</button>
+          <button id="erase-queue" class="bg-purple-500 hover:bg-purple-600 px-3 py-1 rounded text-white" disabled>Quick Queue</button>
+        </div>
+      </div>
+
+      <!-- Experimental (coming soon) -->
+      <div class="bg-white p-4 rounded-lg shadow opacity-50">
+        <h2 class="text-xl font-semibold">Experimental</h2>
+        <p class="mt-2 text-sm">Coming soon…</p>
+        <button disabled class="bg-gray-400 px-3 py-1 rounded text-white cursor-not-allowed mt-4">Solo</button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Authentication Modal -->
+  <div id="auth-modal" class="items-center">
+    <div class="bg-white p-6 rounded-lg shadow-lg w-96">
+      <h2 id="auth-modal-title" class="text-xl font-semibold mb-4">Sign In</h2>
+      <form id="auth-form" class="space-y-4">
+        <div>
+          <label for="auth-email" class="block text-sm">Email</label>
+          <input id="auth-email" type="email" required class="w-full border p-2 rounded"/>
+        </div>
+        <div>
+          <label for="auth-password" class="block text-sm">Password</label>
+          <input id="auth-password" type="password" required class="w-full border p-2 rounded"/>
+        </div>
+        <div class="flex justify-between items-center">
+          <button type="submit" id="auth-submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Sign In</button>
+          <button type="button" id="auth-close" class="text-gray-600 hover:underline">Cancel</button>
+        </div>
+      </form>
+      <p class="mt-4 text-center text-sm">
+        <span id="toggle-text">Don't have an account?</span>
+        <a href="#" id="toggle-link" class="text-blue-600 hover:underline">Sign Up</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script>
+    const {
+      fbAuth, fbProvider,
+      signInWithPopup, signOut,
+      signInWithEmailAndPassword, createUserWithEmailAndPassword,
+      fbDB, fbRef, fbSet
+    } = window;
+
+    async function updateAuthBar() {
+      const bar = document.getElementById('auth-bar'); bar.innerHTML = '';
+      const token = localStorage.getItem('idToken');
+      const name = localStorage.getItem('displayName');
+      const guestId = sessionStorage.getItem('playerId');
+      if (token && name) {
+        sessionStorage.removeItem('playerId');
+        const span = document.createElement('span'); span.textContent=`Welcome, ${name}`;
+        const btn = Object.assign(document.createElement('button'), {
+          textContent:'Log Out', className:'bg-red-500 hover:bg-red-600 px-3 py-1 rounded text-white',
+          onclick: async()=>{ await signOut(fbAuth); localStorage.clear(); updateAuthBar(); }
+        }); bar.append(span,btn);
+      } else {
+        if (guestId) {
+          const span = document.createElement('span'); span.textContent=`Guest: ${guestId.slice(0,8)}`; bar.append(span);
+        } else {
+          const guestBtn = Object.assign(document.createElement('button'), {
+            textContent:'Play as Guest', className:'bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-white',
+            onclick:()=>{ sessionStorage.setItem('playerId', crypto.randomUUID()); updateAuthBar(); }
+          }); bar.append(guestBtn);
+        }
+        const loginBtn = Object.assign(document.createElement('button'), {
+          textContent:'Sign In / Register', className:'bg-green-600 hover:bg-green-700 px-3 py-1 rounded text-white',
+          onclick:()=>openAuthModal('login')
+        }); bar.append(loginBtn);
+      }
+      const ready=!!(sessionStorage.getItem('playerId')||localStorage.getItem('idToken'));
+      document.querySelectorAll('#classic-solo,#classic-queue,#erase-solo,#erase-queue')
+              .forEach(b=>b.disabled=!ready);
+    }
+
+    const modal=document.getElementById('auth-modal');
+    const form=document.getElementById('auth-form');
+    const title=document.getElementById('auth-modal-title');
+    const submitBtn=document.getElementById('auth-submit');
+    const toggleLink=document.getElementById('toggle-link');
+    const toggleTxt=document.getElementById('toggle-text');
+    let mode='login';
+
+    function openAuthModal(m){ mode=m; title.textContent=m==='login'?'Sign In':'Sign Up'; submitBtn.textContent=m==='login'?'Sign In':'Sign Up'; toggleTxt.textContent=m==='login'?"Don't have an account?":'Already have an account?'; toggleLink.textContent=m==='login'?'Sign Up':'Sign In'; modal.classList.add('active'); }
+    document.getElementById('auth-close').onclick=()=>modal.classList.remove('active');
+    toggleLink.onclick=e=>{ e.preventDefault(); openAuthModal(mode==='login'?'signup':'login'); };
+
+    form.onsubmit=async e=>{
+      e.preventDefault();
+      const email=document.getElementById('auth-email').value;
+      const pass =document.getElementById('auth-password').value;
+      try{
+        let cred;
+        if(mode==='login') cred=await signInWithEmailAndPassword(fbAuth,email,pass);
+        else { cred=await createUserWithEmailAndPassword(fbAuth,email,pass); await fbSet(fbRef(fbDB,`users/${cred.user.uid}`),{email:cred.user.email,createdAt:Date.now()}); }
+        const tok=await cred.user.getIdToken(); localStorage.setItem('idToken',tok); localStorage.setItem('displayName',cred.user.email);
+        modal.classList.remove('active'); updateAuthBar();
+      } catch(err){ alert(err.message); }
+    };
+
+    function go(m,t){ location.href=`game.html?mode=${m}&modeType=${t}`; }
+    document.addEventListener('DOMContentLoaded',()=>{ updateAuthBar(); document.getElementById('classic-solo').onclick=()=>go('classic','solo'); document.getElementById('classic-queue').onclick=()=>go('classic','pvp'); document.getElementById('erase-solo').onclick=()=>go('erase','solo'); document.getElementById('erase-queue').onclick=()=>go('erase','pvp'); });
+  </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+README.md
+setup.py
+matchbox/__init__.py
+matchbox/classic.py
+matchbox/erase.py
+matchbox/experimental.py
+matchbox/lobby.py
+matchbox/main.py
+matchbox/models.py
+matchbox.egg-info/PKG-INFO
+matchbox.egg-info/SOURCES.txt
+matchbox.egg-info/dependency_links.txt
+matchbox.egg-info/top_level.txt
+tests/test_api.py
+tests/test_classic.py
+tests/test_erase.py
+tests/test_experimental.py
