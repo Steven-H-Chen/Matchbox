@@ -1,0 +1,202 @@
+<!-- public/classic-solo.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Matchbox • Classic Solo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    :root { --royal:#0f2a58; }
+
+    /* board frame + grid */
+    #board{
+      display:grid; gap:.25rem;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      width:clamp(220px,60vw,320px);
+      aspect-ratio:1/1;
+      border:4px solid #000;     /* outer thick border   */
+      padding:.25rem; background:#000;
+    }
+    .sq{                              /* default (sky)      */
+      @apply flex items-center justify-center rounded
+             text-3xl font-bold select-none
+             cursor-pointer transition-colors duration-150;
+      background:#38bdf8; color:#1e293b;
+    }
+    .sq:hover       { background:var(--royal); color:#fff; }
+    .sq.clicked     { background:var(--royal) !important; color:#fff;
+                      pointer-events:none; cursor:not-allowed;}
+
+    /* scoreboard card */
+    #card{
+      @apply w-full max-w-xs bg-white rounded-lg shadow-lg p-4 text-center;
+    }
+    #card h3  { @apply text-sm tracking-widest font-semibold text-slate-500 mb-1; }
+    #card span{ @apply flex justify-between font-mono; }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col bg-slate-50">
+
+  <!-- header ----------------------------------------------------->
+  <header class="bg-slate-900 text-white flex justify-between items-center px-4 py-3">
+    <a href="home.html" class="text-sm hover:underline">← Home</a>
+    <h1 class="text-lg font-semibold">Classic • Solo&nbsp;vs&nbsp;AI</h1>
+    <button id="logout" class="text-sm hover:underline">Log&nbsp;out</button>
+  </header>
+
+  <!-- main ------------------------------------------------------->
+  <main class="flex-grow flex flex-col items-center gap-6 mt-6">
+
+    <!-- BOARD -->
+    <div id="board"></div>
+
+    <!-- SCORE / STATUS -->
+    <div id="card">
+      <h3>SCOREBOARD</h3>
+      <p id="status" class="mb-3 font-medium text-slate-700">Loading…</p>
+
+      <div id="score" class="text-sm text-slate-700 mb-4 space-y-0.5">
+        <span><b>Rounds</b>      <em id="rounds">0</em></span>
+        <span><b>Total Moves</b> <em id="total">0</em></span>
+        <span><b>Your Moves</b>  <em id="me">0</em></span>
+        <span><b>AI Moves</b>    <em id="ai">0</em></span>
+      </div>
+
+      <div class="flex gap-2">
+        <button id="new"
+                class="flex-1 bg-sky-600 hover:bg-sky-700 text-white py-1 rounded">
+          New&nbsp;Game
+        </button>
+        <button id="reset"
+                class="flex-1 bg-red-600 hover:bg-red-700 text-white py-1 rounded">
+          Reset
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- script ----------------------------------------------------->
+  <script type="module">
+    /* ---------- Firebase auth-guard ---------- */
+    import { initializeApp } from
+      "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+    const cfg = {
+      apiKey: "AIzaSyBBu-9X8PJSzczS967rLcIYyYFjIRd91Bs",
+      authDomain:"matchbox-572e5.firebaseapp.com",
+      databaseURL:"https://matchbox-572e5-default-rtdb.firebaseio.com",
+      projectId:"matchbox-572e5",
+      storageBucket:"matchbox-572e5.firebasestorage.app",
+      messagingSenderId:"782406115903",
+      appId:"1:782406115903:web:5eef421a8ce98b05e94e8a"
+    };
+    const app  = initializeApp(cfg);
+    const auth = getAuth(app);
+
+    onAuthStateChanged(auth,u=>{
+      if(!u && !localStorage.getItem('guest_id')) location.href='/index.html';
+    });
+    document.getElementById('logout').onclick = async()=>{
+      try{await signOut(auth);}catch{}
+      localStorage.removeItem('guest_id');
+      location.href='/index.html';
+    };
+
+    /* ---------- game state ---------- */
+    const boardEl = document.getElementById('board');
+    const statusEl= document.getElementById('status');
+    const roundsEl= document.getElementById('rounds');
+    const totalEl = document.getElementById('total');
+    const meEl    = document.getElementById('me');
+    const aiEl    = document.getElementById('ai');
+
+    const newBtn  = document.getElementById('new');
+    const resetBtn= document.getElementById('reset');
+
+    let gameId=null, board=Array(9).fill(' ');
+    let round=0,totalMoves=0,myMoves=0,aiMoves=0;
+
+    /* build 9 buttons once */
+    boardEl.innerHTML='';
+    for(let i=0;i<9;i++){
+      const b=document.createElement('button');
+      b.className='sq'; b.onclick=()=>playerMove(i,b);
+      boardEl.appendChild(b);
+    }
+
+    /* helper: refresh scoreboard */
+    function updateScore(){
+      roundsEl.textContent=round;
+      totalEl .textContent=totalMoves;
+      meEl    .textContent=myMoves;
+      aiEl    .textContent=aiMoves;
+    }
+
+    /* helper: draw board */
+    function paint(){
+      [...boardEl.children].forEach((btn,i)=>{
+        const m=board[i];
+        btn.textContent=m===' '?'':m.toUpperCase();
+        btn.classList.toggle('clicked',m!==' ');
+      });
+    }
+
+    /* start brand-new game immediately */
+    startGame();
+
+    newBtn .onclick=startGame;
+    resetBtn.onclick=resetBoard;
+
+    async function startGame(){
+      const r = await fetch('/classic/solo/new',{method:'POST'});
+      const d = await r.json();
+      gameId=d.game_id; board=d.board;
+      round++; totalMoves=myMoves=aiMoves=0;
+      statusEl.textContent='Your turn – you are X';
+      updateScore(); paint();
+    }
+
+    function resetBoard(){
+      board=Array(9).fill(' ');
+      totalMoves=myMoves=aiMoves=0;
+      statusEl.textContent='Board reset – your turn';
+      updateScore(); paint();
+    }
+
+    async function playerMove(idx,btn){
+      if(btn.classList.contains('clicked')) return;
+
+      const r = await fetch('/classic/solo/move',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({game_id:gameId,square:idx})
+      });
+      if(!r.ok){ statusEl.textContent='Invalid move'; return; }
+
+      myMoves++; totalMoves++;
+      const d=await r.json();
+      board=d.board; paint();
+
+      const filled=board.filter(c=>c!==' ').length;
+      if(filled>myMoves+aiMoves){ aiMoves++; totalMoves++; }
+
+      updateScore(); statusEl.textContent=prettyStatus(d.status);
+    }
+
+    function prettyStatus(s){
+      switch(s){
+        case'in_progress':return'AI thinking…';
+        case'x_wins'     :return'You win 🎉';
+        case'o_wins'     :return'AI wins 🧠';
+        case'draw'       :return'Draw 🤝';
+        default          :return s;
+      }
+    }
+  </script>
+</body>
+</html>

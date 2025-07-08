@@ -1,0 +1,183 @@
+<!-- public/classic-pvp.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Matchbox • Classic PvP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* --- board frame + grid (identical to classic-solo) --- */
+    #board {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0,1fr));
+      gap: .25rem;
+      width: clamp(220px, 60vw, 320px);
+      aspect-ratio: 1/1;
+      border: 4px solid #000;
+      padding: .25rem;
+      background: #000;
+    }
+    .sq {
+      @apply flex items-center justify-center rounded
+             text-3xl font-bold select-none
+             cursor-pointer transition-colors duration-150;
+      background: #38bdf8;
+      color: #1e293b;
+    }
+    .sq:hover   { background: #0f2a58; color: #fff; }
+    .sq.clicked { background: #0f2a58 !important; color: #fff;
+                  pointer-events: none; cursor: not-allowed; }
+
+    /* scoreboard card */
+    #scorecard {
+      @apply w-full max-w-xs rounded-lg shadow-lg p-5 text-center;
+      background: linear-gradient(150deg,#ffffff 0%,#f3f6fa 100%);
+      border: 1px solid #e2e8f0;
+    }
+    #scorecard h3 {
+      @apply text-xs font-semibold tracking-widest text-slate-500 mb-2;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-50">
+
+  <!-- header -->
+  <header class="bg-slate-900 text-white flex justify-between items-center px-4 py-3">
+    <a href="home.html" class="text-sm hover:underline">← Home</a>
+    <h1 class="text-lg font-semibold">Classic • PvP</h1>
+    <button id="logout" class="text-sm hover:underline">Log&nbsp;out</button>
+  </header>
+
+  <!-- main -->
+  <main class="flex-grow flex flex-col items-center justify-center gap-6">
+
+    <!-- board -->
+    <div id="board"></div>
+
+    <!-- scoreboard & queue -->
+    <div id="scorecard">
+      <h3>SCOREBOARD</h3>
+      <p id="status" class="mb-3 font-medium text-slate-700">
+        Click “Queue” to find an opponent
+      </p>
+
+      <div id="scorebar"
+           class="flex flex-col items-center gap-1 text-sm text-slate-600 mb-4">
+        <span id="rounds">Rounds: 0</span>
+        <span id="total">Total Moves: 0</span>
+        <span id="me">Your Moves: 0</span>
+        <span id="opp">Opponent Moves: 0</span>
+      </div>
+
+      <button id="queue"
+              class="w-full bg-purple-600 hover:bg-purple-700 text-white py-1 rounded">
+        Queue&nbsp;/ Find Opponent
+      </button>
+    </div>
+  </main>
+
+  <!-- scripts -->
+  <script type="module">
+    import { initializeApp } from
+      "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import {
+      getAuth, onAuthStateChanged, signOut
+    } from
+      "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+    const cfg = {
+      apiKey:            "AIzaSyBBu-9X8PJSzczS967rLcIYyYFjIRd91Bs",
+      authDomain:        "matchbox-572e5.firebaseapp.com",
+      databaseURL:       "https://matchbox-572e5-default-rtdb.firebaseio.com",
+      projectId:         "matchbox-572e5",
+      storageBucket:     "matchbox-572e5.firebasestorage.app",
+      messagingSenderId: "782406115903",
+      appId:             "1:782406115903:web:5eef421a8ce98b05e94e8a"
+    };
+    const app  = initializeApp(cfg);
+    const auth = getAuth(app);
+
+    // guard & logout
+    onAuthStateChanged(auth,u=>{
+      if(!u && !localStorage.getItem('guest_id')) location.href='/index.html';
+    });
+    document.getElementById('logout').onclick = async ()=>{
+      try{ await signOut(auth); }catch{}
+      localStorage.removeItem('guest_id');
+      location.href='/index.html';
+    };
+
+    // PvP wiring
+    let lobbyId, mySide;
+    const boardEl   = document.getElementById('board');
+    const queueBtn  = document.getElementById('queue');
+    const statusEl  = document.getElementById('status');
+    const guestId   = localStorage.getItem('guest_id');
+
+    // build empty grid
+    for(let i=0;i<9;i++){
+      const b = document.createElement('button');
+      b.className = 'sq';
+      boardEl.appendChild(b);
+    }
+
+    queueBtn.onclick = async () => {
+      statusEl.textContent = 'Joining queue…';
+      queueBtn.disabled = true;
+
+      const res = await fetch('/classic/pvp/queue', {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'X-Player-ID':   guestId
+        },
+        body: JSON.stringify({ mode: 'classic' })
+      });
+      const q = await res.json();
+      lobbyId = q.lobby_id;
+      mySide  = q.side;
+      statusEl.textContent = q.waiting
+        ? 'Waiting for opponent…'
+        : (mySide === 'x' ? 'Your turn' : 'Opponent’s turn');
+      if (q.waiting) {
+        pollStart();
+      } else {
+        pollState();
+      }
+    };
+
+    function pollStart(){
+      setTimeout(async ()=>{
+        const res = await fetch(
+          `/classic/pvp/state?lobby_id=${lobbyId}`,
+          { headers: { 'X-Player-ID': guestId } }
+        );
+        const st = await res.json();
+        if (st.status === 'waiting') {
+          pollStart();
+        } else {
+          pollState();
+        }
+      }, 1000);
+    }
+
+    async function pollState(){
+      const res = await fetch(
+        `/classic/pvp/state?lobby_id=${lobbyId}`,
+        { headers: { 'X-Player-ID': guestId } }
+      );
+      const st = await res.json();
+      // paint board & status...
+      // (you can wire your paint() & score logic here)
+
+      if (st.status === 'in_progress') {
+        setTimeout(pollState, 1000);
+      } else {
+        statusEl.textContent = st.status;
+      }
+    }
+  </script>
+</body>
+</html>

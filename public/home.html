@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Matchbox • Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="min-h-screen bg-slate-50 flex flex-col">
+
+  <!-- ───── Header ───── -->
+  <header class="bg-slate-900 text-white flex justify-between items-center px-4 py-3">
+    <h1 class="text-xl font-semibold">Matchbox 🔥</h1>
+
+    <!-- signed-in user / guest label -->
+    <span id="user-label" class="text-sm text-slate-200 mr-4"></span>
+
+    <!-- Log-out -->
+    <button id="logout-btn" class="text-sm hover:underline">
+      Log&nbsp;out
+    </button>
+  </header>
+
+  <!-- ───── Main: mode picker (unchanged) ───── -->
+  <main class="flex-grow flex flex-col items-center justify-center px-4">
+    <p class="mb-6 text-lg">Pick a mode:</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+      <a href="classic-solo.html"
+         class="p-4 bg-white rounded-lg shadow hover:ring-2 ring-blue-400 cursor-pointer">
+        <h2 class="text-xl font-semibold mb-2">Classic&nbsp;•&nbsp;Solo vs&nbsp;AI</h2>
+        <p class="text-sm text-slate-600">Standard&nbsp;3×3 against a perfect-play AI.</p>
+      </a>
+
+      <a href="classic-pvp.html"
+         class="p-4 bg-white rounded-lg shadow hover:ring-2 ring-blue-400 cursor-pointer">
+        <h2 class="text-xl font-semibold mb-2">Classic&nbsp;•&nbsp;PvP</h2>
+        <p class="text-sm text-slate-600">Play friends or quick-match online.</p>
+      </a>
+
+      <div class="p-4 bg-white rounded-lg shadow opacity-40 cursor-not-allowed">
+        <h2 class="text-xl font-semibold mb-2">Erase&nbsp;•&nbsp;Solo vs&nbsp;AI</h2>
+        <p class="text-sm text-slate-600">Oldest mark disappears every&nbsp;N moves.</p>
+        <p class="mt-2 text-rose-600 font-medium">Coming&nbsp;soon</p>
+      </div>
+
+      <div class="p-4 bg-white rounded-lg shadow opacity-40 cursor-not-allowed">
+        <h2 class="text-xl font-semibold mb-2">Erase&nbsp;•&nbsp;PvP</h2>
+        <p class="text-sm text-slate-600">Compete with purge mechanics.</p>
+        <p class="mt-2 text-rose-600 font-medium">Coming&nbsp;soon</p>
+      </div>
+
+      <div class="p-4 bg-white rounded-lg shadow opacity-40 cursor-not-allowed">
+        <h2 class="text-xl font-semibold mb-2">Experimental&nbsp;5×5</h2>
+        <p class="text-sm text-slate-600">Score points on a 5×5 board.</p>
+        <p class="mt-2 text-rose-600 font-medium">Coming&nbsp;soon</p>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ───── Guard + logout + username script ───── -->
+  <script type="module">
+    import { initializeApp }  from
+      "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from
+      "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+    /* same config as index.html */
+    const firebaseConfig = {
+      apiKey:            "AIzaSyBBu-9X8PJSzczS967rLcIYyYFjIRd91Bs",
+      authDomain:        "matchbox-572e5.firebaseapp.com",
+      databaseURL:       "https://matchbox-572e5-default-rtdb.firebaseio.com",
+      projectId:         "matchbox-572e5",
+      storageBucket:     "matchbox-572e5.appspot.com",
+      messagingSenderId: "782406115903",
+      appId:             "1:782406115903:web:5eef421a8ce98b05e94e8a"
+    };
+    const app  = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    /* --- Guard & username label --- */
+    onAuthStateChanged(auth, user => {
+      const label = document.getElementById('user-label');
+      const guest = localStorage.getItem('guest_id');
+
+      if (user) {
+        label.textContent = user.displayName || user.email;
+      } else if (guest) {
+        label.textContent = `Guest ${guest.slice(0,8)}`;
+      } else {
+        location.href = '/index.html';   // no session, bounce to landing
+      }
+    });
+
+    /* --- Log-out button --- */
+    document.getElementById('logout-btn').onclick = async () => {
+      try { await signOut(auth); } catch (_) {}
+      localStorage.removeItem('guest_id');
+      location.href = '/index.html';
+    };
+  </script>
+</body>
+</html>
+

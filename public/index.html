@@ -2,194 +2,172 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Matchbox</title>
+  <title>Matchbox • welcome</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 
-  <!-- Firebase + Realtime DB (for PvP queue) -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
-    import {
-      getAuth,
-      GoogleAuthProvider,
-      signInWithPopup,
-      signOut,
-      signInWithEmailAndPassword,
-      createUserWithEmailAndPassword
-    } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
-    import {
-      getDatabase,
-      ref as dbRef,
-      set as dbSet
-    } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyBBu-9X8PJSzczS967rLcIYyYFjIRd91Bs",
-      authDomain: "matchbox-572e5.firebaseapp.com",
-      databaseURL: "https://matchbox-572e5-default-rtdb.firebaseio.com",
-      projectId: "matchbox-572e5",
-      storageBucket: "matchbox-572e5.appspot.com",
-      messagingSenderId: "782406115903",
-      appId: "1:782406115903:web:5eef421a8ce98b05e94e8a"
-    };
-    const app      = initializeApp(firebaseConfig);
-    const auth     = getAuth(app);
-    const provider = new GoogleAuthProvider();
-    const db       = getDatabase(app);
-
-    window.fbAuth                         = auth;
-    window.fbProvider                     = provider;
-    window.signInWithPopup                = signInWithPopup;
-    window.signOut                        = signOut;
-    window.signInWithEmailAndPassword     = signInWithEmailAndPassword;
-    window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
-    window.fbDB                           = db;
-    window.fbRef                          = dbRef;
-    window.fbSet                          = dbSet;
-  </script>
-
+  <!-- animated glow -->
   <style>
-    /* simple modal styles */
-    #auth-modal { display:none; position:fixed; inset:0; align-items:center; justify-content:center; background:rgba(0,0,0,0.5); }
-    #auth-modal.active { display:flex; }
+    @keyframes pulseBorder{
+      0%,100%{box-shadow:0 0 0 0 rgba(56,189,248,.35);}
+      50%    {box-shadow:0 0 20px 6px rgba(56,189,248,.30);}
+    }
   </style>
 </head>
+<body
+  class="min-h-screen flex flex-col items-center justify-center
+         bg-[#0f2a58]
+         bg-[radial-gradient(circle_at_center,_rgba(255,255,255,.05),_transparent_70%)]">
 
-<body class="min-h-screen bg-slate-50 flex flex-col">
+  <!-- CARD -->
+  <div id="card"
+       class="w-full max-w-sm bg-white rounded-2xl p-8 shadow-lg
+              animate-[pulseBorder_6s_ease-in-out_infinite]"></div>
 
-  <!-- Header -->
-  <header class="bg-slate-900 text-white flex items-center justify-between px-4 py-3">
-    <h1 class="text-2xl font-semibold">Matchbox 🌟</h1>
-    <div id="auth-bar" class="space-x-2"></div>
-  </header>
+  <p class="mt-6 text-xs text-slate-200">Matchbox 🌟</p>
 
-  <!-- Landing page: choose mode -->
-  <section id="landing" class="flex-grow flex flex-col items-center justify-center space-y-6 px-4">
-    <p class="text-lg">Choose your game mode:</p>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+  <script type="module">
+    /* ---------- helpers ---------- */
+    const $card  = document.getElementById('card');
+    const render = html => $card.innerHTML = html.trim();
 
-      <!-- Classic -->
-      <div class="bg-white p-4 rounded-lg shadow">
-        <h2 class="text-xl font-semibold">Classic</h2>
-        <p class="mt-2 text-sm">Standard 3×3 vs AI or friend</p>
-        <div class="mt-4 space-x-2">
-          <button id="classic-solo" class="bg-blue-500 hover:bg-blue-600 px-3 py-1 rounded text-white" disabled>Solo</button>
-          <button id="classic-queue" class="bg-purple-500 hover:bg-purple-600 px-3 py-1 rounded text-white" disabled>Quick Queue</button>
-        </div>
-      </div>
+    /* ---------- Firebase bootstrap ---------- */
+    import { initializeApp } from
+      "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import {
+      getAuth, onAuthStateChanged, signOut,
+      signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile
+    } from
+      "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import {
+      getDatabase, ref, set
+    } from
+      "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-      <!-- Erase-Mode -->
-      <div class="bg-white p-4 rounded-lg shadow">
-        <h2 class="text-xl font-semibold">Erase-Mode</h2>
-        <p class="mt-2 text-sm">Oldest mark is erased after N moves</p>
-        <div class="mt-4 space-x-2">
-          <button id="erase-solo" class="bg-blue-500 hover:bg-blue-600 px-3 py-1 rounded text-white" disabled>Solo</button>
-          <button id="erase-queue" class="bg-purple-500 hover:bg-purple-600 px-3 py-1 rounded text-white" disabled>Quick Queue</button>
-        </div>
-      </div>
+    const firebaseConfig = {
+      apiKey:            "AIzaSyBBu-9X8PJSzczS967rLcIYyYFjIRd91Bs",
+      authDomain:        "matchbox-572e5.firebaseapp.com",
+      databaseURL:       "https://matchbox-572e5-default-rtdb.firebaseio.com",
+      projectId:         "matchbox-572e5",
+      storageBucket:     "matchbox-572e5.appspot.com",
+      messagingSenderId: "782406115903",
+      appId:             "1:782406115903:web:5eef421a8ce98b05e94e8a"
+    };
+    const app  = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db   = getDatabase(app);
 
-      <!-- Experimental (coming soon) -->
-      <div class="bg-white p-4 rounded-lg shadow opacity-50">
-        <h2 class="text-xl font-semibold">Experimental</h2>
-        <p class="mt-2 text-sm">Coming soon…</p>
-        <button disabled class="bg-gray-400 px-3 py-1 rounded text-white cursor-not-allowed mt-4">Solo</button>
-      </div>
+    /* ---------- Landing / Auth views ---------- */
+    function viewLanding(){
+      render(/*html*/`
+        <h1 class="text-2xl font-bold text-sky-700">Matchbox</h1>
 
-    </div>
-  </section>
+        <button id="go-auth"
+                class="block w-full bg-sky-600 hover:bg-sky-700
+                       text-white py-2 rounded">
+          Sign in / Sign up
+        </button>
 
-  <!-- Authentication Modal -->
-  <div id="auth-modal" class="items-center">
-    <div class="bg-white p-6 rounded-lg shadow-lg w-96">
-      <h2 id="auth-modal-title" class="text-xl font-semibold mb-4">Sign In</h2>
-      <form id="auth-form" class="space-y-4">
-        <div>
-          <label for="auth-email" class="block text-sm">Email</label>
-          <input id="auth-email" type="email" required class="w-full border p-2 rounded"/>
-        </div>
-        <div>
-          <label for="auth-password" class="block text-sm">Password</label>
-          <input id="auth-password" type="password" required class="w-full border p-2 rounded"/>
-        </div>
-        <div class="flex justify-between items-center">
-          <button type="submit" id="auth-submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Sign In</button>
-          <button type="button" id="auth-close" class="text-gray-600 hover:underline">Cancel</button>
-        </div>
-      </form>
-      <p class="mt-4 text-center text-sm">
-        <span id="toggle-text">Don't have an account?</span>
-        <a href="#" id="toggle-link" class="text-blue-600 hover:underline">Sign Up</a>
-      </p>
-    </div>
-  </div>
+        <button id="guest-btn"
+                class="block w-full border border-slate-300 hover:bg-slate-50
+                       py-2 rounded text-sm mt-2">
+          Continue as Guest
+        </button>
+      `);
 
-  <!-- Scripts -->
-  <script>
-    const {
-      fbAuth, fbProvider,
-      signInWithPopup, signOut,
-      signInWithEmailAndPassword, createUserWithEmailAndPassword,
-      fbDB, fbRef, fbSet
-    } = window;
+      /* open auth form */
+      document.getElementById('go-auth').onclick = () => viewAuth('login');
 
-    async function updateAuthBar() {
-      const bar = document.getElementById('auth-bar'); bar.innerHTML = '';
-      const token = localStorage.getItem('idToken');
-      const name = localStorage.getItem('displayName');
-      const guestId = sessionStorage.getItem('playerId');
-      if (token && name) {
-        sessionStorage.removeItem('playerId');
-        const span = document.createElement('span'); span.textContent=`Welcome, ${name}`;
-        const btn = Object.assign(document.createElement('button'), {
-          textContent:'Log Out', className:'bg-red-500 hover:bg-red-600 px-3 py-1 rounded text-white',
-          onclick: async()=>{ await signOut(fbAuth); localStorage.clear(); updateAuthBar(); }
-        }); bar.append(span,btn);
-      } else {
-        if (guestId) {
-          const span = document.createElement('span'); span.textContent=`Guest: ${guestId.slice(0,8)}`; bar.append(span);
-        } else {
-          const guestBtn = Object.assign(document.createElement('button'), {
-            textContent:'Play as Guest', className:'bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-white',
-            onclick:()=>{ sessionStorage.setItem('playerId', crypto.randomUUID()); updateAuthBar(); }
-          }); bar.append(guestBtn);
-        }
-        const loginBtn = Object.assign(document.createElement('button'), {
-          textContent:'Sign In / Register', className:'bg-green-600 hover:bg-green-700 px-3 py-1 rounded text-white',
-          onclick:()=>openAuthModal('login')
-        }); bar.append(loginBtn);
-      }
-      const ready=!!(sessionStorage.getItem('playerId')||localStorage.getItem('idToken'));
-      document.querySelectorAll('#classic-solo,#classic-queue,#erase-solo,#erase-queue')
-              .forEach(b=>b.disabled=!ready);
+      /* guest flow */
+      document.getElementById('guest-btn').onclick = async () => {
+        if (auth.currentUser) await signOut(auth);          // ensure fresh guest
+        localStorage.setItem('guest_id', crypto.randomUUID());
+        location.href = '/home.html';
+      };
     }
 
-    const modal=document.getElementById('auth-modal');
-    const form=document.getElementById('auth-form');
-    const title=document.getElementById('auth-modal-title');
-    const submitBtn=document.getElementById('auth-submit');
-    const toggleLink=document.getElementById('toggle-link');
-    const toggleTxt=document.getElementById('toggle-text');
-    let mode='login';
+    function viewAuth(mode){
+      const isLogin = mode === 'login';
+      render(/*html*/`
+        <button id="back"
+                class="absolute -left-3 -top-3 bg-sky-600 text-white
+                       w-8 h-8 rounded-full flex items-center justify-center">←</button>
 
-    function openAuthModal(m){ mode=m; title.textContent=m==='login'?'Sign In':'Sign Up'; submitBtn.textContent=m==='login'?'Sign In':'Sign Up'; toggleTxt.textContent=m==='login'?"Don't have an account?":'Already have an account?'; toggleLink.textContent=m==='login'?'Sign Up':'Sign In'; modal.classList.add('active'); }
-    document.getElementById('auth-close').onclick=()=>modal.classList.remove('active');
-    toggleLink.onclick=e=>{ e.preventDefault(); openAuthModal(mode==='login'?'signup':'login'); };
+        <h2 class="text-xl font-semibold mb-4">
+          ${isLogin ? 'Sign in' : 'Create account'}
+        </h2>
 
-    form.onsubmit=async e=>{
-      e.preventDefault();
-      const email=document.getElementById('auth-email').value;
-      const pass =document.getElementById('auth-password').value;
-      try{
-        let cred;
-        if(mode==='login') cred=await signInWithEmailAndPassword(fbAuth,email,pass);
-        else { cred=await createUserWithEmailAndPassword(fbAuth,email,pass); await fbSet(fbRef(fbDB,`users/${cred.user.uid}`),{email:cred.user.email,createdAt:Date.now()}); }
-        const tok=await cred.user.getIdToken(); localStorage.setItem('idToken',tok); localStorage.setItem('displayName',cred.user.email);
-        modal.classList.remove('active'); updateAuthBar();
-      } catch(err){ alert(err.message); }
-    };
+        <div class="space-y-3 text-left text-sm">
+          <div>
+            <label class="block mb-1">Email</label>
+            <input id="i-email" type="email"
+                   class="w-full border rounded p-2 outline-sky-600" />
+          </div>
 
-    function go(m,t){ location.href=`game.html?mode=${m}&modeType=${t}`; }
-    document.addEventListener('DOMContentLoaded',()=>{ updateAuthBar(); document.getElementById('classic-solo').onclick=()=>go('classic','solo'); document.getElementById('classic-queue').onclick=()=>go('classic','pvp'); document.getElementById('erase-solo').onclick=()=>go('erase','solo'); document.getElementById('erase-queue').onclick=()=>go('erase','pvp'); });
+          <div id="wrap-name" ${isLogin ? 'class="hidden"' : ''}>
+            <label class="block mb-1">Username</label>
+            <input id="i-name" type="text"
+                   class="w-full border rounded p-2 outline-sky-600" />
+          </div>
+
+          <div>
+            <label class="block mb-1">Password</label>
+            <input id="i-pass" type="password"
+                   class="w-full border rounded p-2 outline-sky-600" />
+          </div>
+        </div>
+
+        <button id="submit"
+                class="w-full bg-sky-600 hover:bg-sky-700 text-white py-2 rounded mt-4">
+          Continue
+        </button>
+
+        <p class="text-center text-sm mt-2">
+          <span>${isLogin ? 'Need an account?' : 'Already have one?'}</span>
+          <a id="toggle" href="#" class="text-sky-600 hover:underline">
+            ${isLogin ? 'Sign up' : 'Log in'}
+          </a>
+        </p>
+      `);
+
+      document.getElementById('back').onclick   = () => viewLanding();
+      document.getElementById('toggle').onclick = e => {
+        e.preventDefault();
+        viewAuth(isLogin ? 'signup' : 'login');
+      };
+
+      document.getElementById('submit').onclick = async () => {
+        const email = document.getElementById('i-email').value.trim();
+        const pass  = document.getElementById('i-pass').value.trim();
+        const name  = document.getElementById('i-name')?.value.trim();
+
+        if (!email || !pass || (!isLogin && !name)){
+          alert('Please fill in all required fields'); return;
+        }
+        try{
+          let cred;
+          if (isLogin){
+            cred = await signInWithEmailAndPassword(auth, email, pass);
+          }else{
+            cred = await createUserWithEmailAndPassword(auth, email, pass);
+            await updateProfile(cred.user, { displayName: name || email });
+            await set(ref(db, `users/${cred.user.uid}`), { username: name, email });
+          }
+          /* converting to a real user -> drop stale guest token */
+          localStorage.removeItem('guest_id');
+          location.href = '/home.html';
+        }catch(err){ alert(err.message); }
+      };
+    }
+
+    /* ---------- Boot guard ---------- */
+    onAuthStateChanged(auth, user => {
+      const hasGuest = localStorage.getItem('guest_id');
+      if (user || hasGuest){
+        location.href = '/home.html';    // already in a session
+      }else{
+        viewLanding();                   // show landing card
+      }
+    });
   </script>
 </body>
 </html>
