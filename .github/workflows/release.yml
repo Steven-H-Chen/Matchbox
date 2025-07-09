@@ -1,46 +1,54 @@
+# .github/workflows/release.yml
 name: 📦 Package & Release
+
 on:
   push:
-    tags: ['v*.*.*']
+    # only run when you push tags like "v1.0.0"
+    tags:
+      - 'v*.*.*'
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./matchbox     # <— point to where your package.json lives
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Use Node.js
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🖥️ Use Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - name: Install dependencies
+      - name: 📄 Install dependencies
+        working-directory: ${{ github.workspace }}
         run: npm ci
 
-      - name: Package Electron app
+      - name: 🛠️ Package Electron app
+        working-directory: ${{ github.workspace }}
         run: npm run package
+        # make sure your package.json's "package" script calls electron-packager
         env:
           npm_package_version: ${{ github.ref_name }}
 
-      - name: Create GitHub Release
+      - name: 🆕 Create GitHub Release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: |
-            Automated release for ${{ github.ref_name }}
+            📦 Automated release for ${{ github.ref_name }}
+            — built by CI run #${{ github.run_number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
-      - name: Upload Release Assets
+      - name: 📤 Upload Release Assets
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          files: dist/Matchbox-*.zip
+          # adjust this glob if your packaged zips land elsewhere
+          files: |
+            dist/Matchbox-*.{zip,exe}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
