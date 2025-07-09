@@ -1,0 +1,51 @@
+name: 📦 Package & Release
+
+on:
+  push:
+    # only trigger on version tags like "v1.2.3"
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🖥️ Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🛠️ Package Electron app
+        run: npm run package
+        env:
+          # ensure package.json’s version matches the tag (e.g. v1.2.3)
+          npm_package_version: ${{ github.ref_name }}
+
+      - name: 📄 Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            Automated release for ${{ github.ref_name }}
+            Packaged by CI run #${{ github.run_number }}
+        env:
+          # your PAT stored as GH_TOKEN in repo secrets
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: 📤 Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/Matchbox-*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
